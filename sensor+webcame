@@ -1,0 +1,61 @@
+#include <FastLED.h>
+
+#define DATA_PIN 3  
+#define LED_TYPE WS2812
+#define COLOR_ORDER GRB
+#define NUM_LEDS 24
+CRGB leds[NUM_LEDS];
+
+// Ultrasonic Sensor Pins
+#define TRIG_PIN 9
+#define ECHO_PIN 10
+
+void setup() {
+  Serial.begin(9600);  // Enable Serial communication with Python
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(96);
+  fill_solid(leds, NUM_LEDS, CRGB::Black);  // Start with LEDs OFF
+  FastLED.show();
+}
+
+void loop() {
+  long duration;
+  int distance;
+
+  // Measure distance using ultrasonic sensor
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  duration = pulseIn(ECHO_PIN, HIGH);
+  distance = duration * 0.034 / 2; // Convert to cm
+
+  // If movement is detected (distance < 50 cm), send signal to Python
+  if (distance > 0 && distance < 50) {
+    Serial.println("U");  // "U" means ultrasonic detected movement
+  }
+
+  // Check for gesture signals from Python
+  if (Serial.available() > 0) {
+    char input = Serial.read();
+    updateLEDs(input);
+  }
+
+  FastLED.show();
+  delay(100);
+}
+
+// Function to update LEDs based on gestures & ultrasonic
+void updateLEDs(char gesture) {
+  switch(gesture) {
+    case 'Y1': fill_solid(leds, NUM_LEDS, CRGB(255, 255, 100)); break;  // Soft Yellow (Smile)
+    case 'Y2': fill_solid(leds, NUM_LEDS, CRGB(255, 255, 0)); break;    // Bright Yellow (Thumbs Up)
+    case 'Y3': fill_solid(leds, NUM_LEDS, CRGB(255, 200, 50)); break;   // Warm Yellow (Wave)
+    case 'Y4': fill_solid(leds, NUM_LEDS, CRGB(255, 150, 0)); break;    // Gold Yellow (Peace Sign)
+    case 'U': fill_solid(leds, NUM_LEDS, CRGB(0, 255, 255)); break;    // Cyan for movement detection
+  }
+}
