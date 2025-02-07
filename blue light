@@ -1,0 +1,94 @@
+#include <FastLED.h>
+
+#define DATA_PIN    3
+#define LED_TYPE    WS2811
+#define COLOR_ORDER GRB
+#define NUM_LEDS    24
+CRGB leds[NUM_LEDS];
+
+#define BRIGHTNESS          96
+#define FRAMES_PER_SECOND  120
+
+void setup() {
+  delay(3000); // 3 second delay for recovery
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(BRIGHTNESS);
+}
+
+// List of patterns to cycle through. Each is now set to blue.
+typedef void (*SimplePatternList[])();
+SimplePatternList gPatterns = { solidBlue, blueWithGlitter, blueConfetti, blueSinelon, blueJuggle, blueBpm };
+
+uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
+
+void loop() {
+  // Call the current pattern function once, updating the 'leds' array
+  gPatterns[gCurrentPatternNumber]();
+
+  // Send the 'leds' array out to the actual LED strip
+  FastLED.show();
+  
+  // Insert a delay to keep the framerate modest
+  FastLED.delay(1000 / FRAMES_PER_SECOND);
+
+  // Change patterns periodically
+  EVERY_N_SECONDS(10) { nextPattern(); }
+}
+
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+void nextPattern() {
+  // Add one to the current pattern number, and wrap around at the end
+  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
+}
+
+// ✅ All patterns are now blue
+
+void solidBlue() {
+  // All LEDs solid blue
+  fill_solid(leds, NUM_LEDS, CRGB::Blue);
+}
+
+void blueWithGlitter() {
+  // Blue base with white glitter
+  fill_solid(leds, NUM_LEDS, CRGB::Blue);
+  addGlitter(80);
+}
+
+void addGlitter(fract8 chanceOfGlitter) {
+  if (random8() < chanceOfGlitter) {
+    leds[random16(NUM_LEDS)] += CRGB::White; // Adds some white sparkle
+  }
+}
+
+void blueConfetti() {
+  // Random blue speckles that blink in and fade smoothly
+  fadeToBlackBy(leds, NUM_LEDS, 10);
+  int pos = random16(NUM_LEDS);
+  leds[pos] = CRGB::Blue;
+}
+
+void blueSinelon() {
+  // A blue dot sweeping back and forth, with fading trails
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  int pos = beatsin16(13, 0, NUM_LEDS - 1);
+  leds[pos] = CRGB::Blue;
+}
+
+void blueBpm() {
+  // Blue stripes pulsing at a defined Beats-Per-Minute (BPM)
+  uint8_t BeatsPerMinute = 62;
+  uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = CRGB::Blue;
+  }
+}
+
+void blueJuggle() {
+  // Eight blue dots, weaving in and out of sync with each other
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  for (int i = 0; i < 8; i++) {
+    leds[beatsin16(i + 7, 0, NUM_LEDS - 1)] = CRGB::Blue;
+  }
+}
+
