@@ -1,0 +1,105 @@
+import cv2
+import serial
+import time
+import mediapipe as mp
+import pyttsx3
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Initialize Serial Communication with Arduino
+arduino = serial.Serial('/dev/cu.usbmodem2101', 9600)  # Update for Mac
+time.sleep(2)  # Wait for connection to stabilize
+
+# Initialize Text-to-Speech Engine
+engine = pyttsx3.init()
+engine.setProperty('rate', 160)  # Adjust speech speed
+
+# Initialize MediaPipe Hand & Face Detection
+mp_hands = mp.solutions.hands
+mp_face = mp.solutions.face_detection
+hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+face_detection = mp_face.FaceDetection(min_detection_confidence=0.5)
+
+# Open webcam
+cap = cv2.VideoCapture(0)
+
+# Track gesture data
+gesture_start_time = None
+current_gesture = None
+gesture_data = []  # List to store all recorded gestures & ultrasonic data
+
+# Define Positive Responses & LED Colors
+gesture_info = {
+    "smile": {"message": "Great smile!", "color_code": "Y1", "led_color": "Soft Yellow"},
+    "thumbs_up": {"message": "Thumbs up!", "color_code": "Y2", "led_color": "Bright Yellow"},
+    "wave": {"message": "Hello there!", "color_code": "Y3", "led_color": "Warm Yellow"},
+    "peace_sign": {"message": "Peace and positivity!", "color_code": "Y4", "led_color": "Gold Yellow"},
+    "ultrasonic": {"message": "Motion detected!", "color_code": "U", "led_color": "Cyan"}
+}
+
+# Function to detect a smile
+def detect_smile(detections):
+    return bool(detections)  # If a face is detected, assume smile (simplified)
+
+# Function to detect gestures
+def detect_gesture(hand_landmarks):
+    if not hand_landmarks:
+        return None
+
+    for hand in hand_landmarks:
+        landmarks = hand.landmark
+        thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP].y
+        index_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y
+
+        # Thumbs up
+        if thumb_tip < index_tip:
+            return "thumbs_up"
+
+        # Wave (if hand is detected)
+        return "wave"
+
+    return None
+
+# Main loop
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        continue
+
+    # Convert frame to RGB for MediaPipe processing
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face_results = face_detection.process(rgb_frame)
+    hand_results = hands.process(rgb_frame)
+
+    detected_gesture = detect_gesture(hand_results.multi_hand_landmarks)
+    detected_smile = detect_smile(face_results.detections)
+
+    # Check for ultrasonic movement
+    if arduino.in_waiting > 0:
+        ultrasonic_signal = arduino.readline().decode().strip()
+        if ultrasonic_signal == "U":
+            print("Motion detected by ultrasonic sensor!")
+            gesture_data.append([time.strftime("%Y-%m-%d %H:%M:%S"), "ultrasonic", "-", "Cyan"])
+            arduino.write(b'U')  # Send LED color to Arduino
+
+    # Handle detected gestures
+    if detected_gesture and detected_gesture != current_gesture:
+        current_gesture = detected_gesture
+        gesture_data.append([time.strftime("%Y-%m-%d %H:%M:%S"), current_gesture, "-", gesture_info[current_gesture]["led_color"]])
+        engine.say(gesture_info[current_gesture]["message"])
+        engine.runAndWait()
+        arduino.write(gesture_info[current_gesture]["color_code"].encode())
+
+    # Display video
+    cv2.imshow('Gesture & Ultrasonic Tracking', frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+
+# Save results to CSV
+df = pd.DataFrame(gesture_data, columns=["Timestamp", "Gesture", "Duration (if any)", "LED Color"])
+df.to_csv("gesture_sensor_log.csv", index=False)
+print("Results saved to gesture_sensor_log.csv")
